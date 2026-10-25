@@ -2,6 +2,29 @@
 
 Cambios del skill `estratega-bancario`. Las versiones siguen [versionado semántico](https://semver.org/lang/es/) según su contrato ([`references/contrato.md`](skill/estratega-bancario/references/contrato.md)).
 
+## [1.2.0] — 2026-10-25
+
+El revisor independiente pasa a ser un skill aparte, **revisor-independiente**, que cualquier skill puede usar.
+
+### Por qué
+
+- **El método de revisión no es bancario.** Recalcular los números clave, controlar unidades y coherencia, calificar la evidencia y la segunda ronda corta sirven para cualquier análisis con cifras. Separado, se mejora una vez y lo aprovechan todos los skills.
+- **Lo bancario queda acá.** El estratega le pasa al revisor su lista de control del dominio.
+
+### Cambió
+
+- **Requiere el skill revisor-independiente 1.0 o posterior, misma versión mayor (1.x),** instalado aparte. El paso 7 de `SKILL.md` lo usa con la lista bancaria.
+- **Si el revisor falta o no es compatible,** `scripts/revisor.py` lo dice, explica qué instalar y propone una revisión reducida con la lista bancaria, que la respuesta tiene que declarar.
+
+### Agregado
+
+- `scripts/revisor.py`: ubica el revisor (`REVISOR_DIR`, la carpeta de skills donde está instalado el estratega, `~/.claude/skills/` y las carpetas de skills de Claude), lee su `VERSION` y devuelve las rutas de sus instrucciones y de las dos listas.
+- `references/revision_bancaria.md`: la lista de control bancaria (pesos constantes, fusiones, quiebres de régimen, NIC 29, mediana contra ponderado, mora diluida, moneda de la base, costos únicos, fair share).
+
+### Quitado
+
+- `references/revisor.md`. El método general está en revisor-independiente, y lo bancario, en `references/revision_bancaria.md`.
+
 ## [1.1.0] — 2026-10-25
 
 Pasa a usar la capa de datos instalada en lugar de una copia propia.

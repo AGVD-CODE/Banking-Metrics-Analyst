@@ -1,7 +1,7 @@
 ---
 name: estratega-bancario
 description: Analista estratégico senior (20+ años en banca argentina) que encuentra insights ocultos en las métricas de los bancos y los convierte en oportunidades de negocio dimensionadas. Compara la historia de muchas entidades con datos oficiales del BCRA, los cruza con la macro (inflación, tipo de cambio, tasas, actividad, salarios, empleo) y corre cuotas de mercado, brechas contra pares, correlaciones con rezagos, segmentación de modelos de negocio, sensibilidad macro y detección de anomalías, con gráficos. Usar SIEMPRE que el usuario quiera analizar, diagnosticar, comparar o hacer benchmarking de bancos argentinos más allá de un dato puntual, por ejemplo por qué un banco gana o pierde cuota, dónde crecer, qué producto o segmento atacar, qué le pega la macro a la mora o al crédito, qué esconden los datos, o para preparar estrategia comercial, un plan de negocios o un comité. Para un dato suelto (cuánto tiene, quién tiene más) alcanza con bcra-oraculo.
-compatibility: Requiere el skill bcra-oraculo 2.1 o posterior (misma versión mayor), que es su capa de datos. Python 3.8+ con pandas, numpy, scipy, scikit-learn, statsmodels y matplotlib (scripts/requirements.txt). pdftotext (poppler) para historia mensual. Red a www.bcra.gob.ar, api.bcra.gob.ar, apis.datos.gob.ar y www.indec.gob.ar.
+compatibility: Requiere el skill bcra-oraculo 2.1 o posterior (misma versión mayor), que es su capa de datos, y el skill revisor-independiente 1.x, que revisa cada análisis antes de entregarlo. Python 3.8+ con pandas, numpy, scipy, scikit-learn, statsmodels y matplotlib (scripts/requirements.txt). pdftotext (poppler) para historia mensual. Red a www.bcra.gob.ar, api.bcra.gob.ar, apis.datos.gob.ar y www.indec.gob.ar.
 ---
 
 # Estratega Bancario · Argentina
@@ -98,10 +98,17 @@ Para cada insight, definí qué haría el banco, cuánto vale y qué riesgo trae
 ### 7. Revisión independiente (siempre, antes de entregar)
 Escribí la respuesta completa en `trabajo/borrador.md`, con el formato de la sección "Formato de respuesta", y hacela revisar por **otro agente** que no participó del análisis. El que escribió el análisis no ve sus propios errores. En las pruebas de este skill aparecieron errores que un revisor atrapa: un ratio mal calculado, un titular apoyado en medianas que el promedio ponderado contradecía y una "fuga" que era un escalón único.
 
-- **Si tenés una herramienta para lanzar agentes** (Agent o Task, como en Claude Code): lanzá al revisor con el pedido de `references/revisor.md` (sección 1) y esperá su informe en `trabajo/revision.md`.
-- **Si no la tenés** (por ejemplo, en Claude.ai): hacé vos la revisión con la lista de `references/revisor.md` (secciones 3 y 4). Releé el borrador como si fuera de otro, recalculá los números clave desde los CSV y escribí el mismo informe.
+La revisión la hace el skill **revisor-independiente**. Este skill le aporta la lista de control bancaria (`references/revision_bancaria.md`). Para ubicarlo:
+```bash
+python3 scripts/revisor.py
+```
+Devuelve la ruta de sus instrucciones (`instrucciones`), su lista general y la lista bancaria, después de controlar que la versión sea compatible.
 
-Aplicá las correcciones según la sección 5 de `references/revisor.md`: los críticos siempre. Si hubo críticos, hacé una **segunda ronda corta** en la que el revisor mira solo los cambios: las correcciones grandes suelen introducir errores nuevos. En las pruebas, la revisión atrapó 2 errores críticos en cada análisis, y la segunda ronda detectó una corrección que contaba dos veces un mismo cargo.
+- **Si tenés una herramienta para lanzar agentes** (Agent o Task, como en Claude Code): lanzá al revisor con el pedido de la sección 1 de sus instrucciones. Pasale como lista de control del dominio la ruta de `lista_dominio` y esperá su informe en `trabajo/revision.md`.
+- **Si no la tenés** (por ejemplo, en Claude.ai): hacé vos la revisión siguiendo sus secciones 2 a 4 con las dos listas. Releé el borrador como si fuera de otro, recalculá los números clave desde los CSV y escribí el mismo informe.
+- **Si `revisor.py` dice que falta o no es compatible:** seguí su `plan_b`, una revisión reducida con la lista bancaria, y en la respuesta avisá qué instalar.
+
+Aplicá las correcciones según la sección 5 de sus instrucciones: los críticos siempre. Si hubo críticos, hacé una **segunda ronda corta** en la que el revisor mira solo los cambios: las correcciones grandes suelen introducir errores nuevos. En las pruebas, la revisión atrapó 2 errores críticos en cada análisis, y la segunda ronda detectó una corrección que contaba dos veces un mismo cargo.
 
 ### 8. Presentar
 Entregá la versión corregida (ver "Formato de respuesta"), con una línea en "Fuentes y método" que diga que fue revisada y cuántas correcciones se aplicaron.
@@ -149,6 +156,7 @@ Estilo: español rioplatense profesional, números en formato argentino (1.234,5
 - **Falta pdftotext:** `apt-get install -y poppler-utils` o `brew install poppler`. Sin él, `panel.py` usa solo la API (5 períodos: 3 meses y 2 diciembres) y lo avisa. Decilo en la respuesta: sin historia no hay correlaciones temporales ni sensibilidad.
 - **`sin_acceso_red`:** pedir que se habiliten los dominios de la sección de compatibilidad. Nunca responder de memoria.
 - **Falta bcra-oraculo o su versión no es compatible:** `panel.py` lo dice y explica qué instalar (https://github.com/AGVD-CODE/BCRA-Oracle/releases). Si está en otra carpeta, definir `BCRA_ORACULO_DIR`.
+- **Falta revisor-independiente o su versión no es compatible:** `revisor.py` lo dice, explica qué instalar (https://github.com/AGVD-CODE/Independent-Reviewer/releases) y trae el plan B. Si está en otra carpeta, definir `REVISOR_DIR`.
 - **Una fuente cambió de formato:** ver `references/fuentes_macro.md` (macro) y `references/fuentes.md` de bcra-oraculo (entidades).
 
 ## Referencias
@@ -156,8 +164,8 @@ Estilo: español rioplatense profesional, números en formato argentino (1.234,5
 - `references/metodologia.md`: cómo leer e interpretar cada análisis, umbrales y checklist de robustez. Leer antes de interpretar resultados estadísticos.
 - `references/contexto_argentino.md`: regímenes macro y regulatorios 2014-2026, contabilidad por inflación, efectos del tipo de cambio, estructura del sistema. Leer antes de interpretar series de tiempo o saltos.
 - `references/oportunidades.md`: playbook de hipótesis, fórmulas para dimensionar, priorización y ficha de oportunidad. Leer en los pasos 1 y 6.
-- `references/contrato.md`: qué necesita este skill (bcra-oraculo 2.x), qué entrega y cómo se versiona. Leer si otro skill o agente va a usar sus salidas.
-- `references/revisor.md`: cómo lanzar al revisor, qué revisa, formato del informe y cómo aplicar las correcciones. Leer en el paso 7 (y es lo que lee el revisor).
+- `references/contrato.md`: qué necesita este skill (bcra-oraculo 2.x y revisor-independiente 1.x), qué entrega y cómo se versiona. Leer si otro skill o agente va a usar sus salidas.
+- `references/revision_bancaria.md`: la lista de control bancaria que este skill le pasa al revisor en el paso 7.
 - `references/fuentes_macro.md`: catálogo de series macro, endpoints y trampas de cada fuente.
 - En bcra-oraculo: `references/diccionario.md` (qué es cada campo, unidad y frecuencia), `references/fuentes.md` (fuentes y sus trampas) y `references/contrato.md` (su interfaz para otros skills).
 
