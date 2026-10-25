@@ -52,4 +52,4 @@ Las columnas nuevas se llaman `bcra_<id>` y `datos_<id>`. Antes de usar una seri
 - **Miles o millones:** las series "por tipo de titular" vienen en miles de pesos; las principales, en millones.
 - **"Préstamos por tipo de titular" por provincia** son préstamos a los **gobiernos** provinciales (sector público), no crédito privado por provincia. No usarlas como mapa de crédito regional.
 - **Series diarias:** stocks a fin de mes; tasas y tipo de cambio en promedio mensual. Para el tipo de cambio de cierre (por ejemplo, para valuar un stock en dólares) usar `--bcra-id 5` sin `--promediar`.
-- **Medios de pago:** el Informe de Pagos Minoristas (transferencias, QR, tarjetas, ECHEQ, cuentas de pago) no está incluido en este skill: lo consulta el skill complementario `bcra-oraculo` (`scripts/consultar_pagos.py --buscar "..." --meses N`), si está instalado, o se baja del sitio del BCRA (URL en `references/fuentes_bcra.md`, sección 3).
+- **Medios de pago:** el Informe de Pagos Minoristas (transferencias, QR, tarjetas, ECHEQ, cuentas de pago) lo consulta bcra-oraculo: `scripts/consultar_pagos.py --buscar "..." --meses N`.
