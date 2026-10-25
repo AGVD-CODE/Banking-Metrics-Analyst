@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: mora-consumo-macro-y-oportunidad-contraciclica
+expected_outcome: |
+  Análisis temporal de la mora de consumo contra variables macro (salario real, tasas reales, actividad, inflación) con rezagos, evidencia calibrada (n efectivo, corrección por comparaciones múltiples), sensibilidad por banco y una oportunidad contracíclica en personales dimensionada, con gráficos.

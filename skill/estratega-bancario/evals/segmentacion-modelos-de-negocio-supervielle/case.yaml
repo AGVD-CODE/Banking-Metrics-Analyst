@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: segmentacion-modelos-de-negocio-supervielle
+expected_outcome: |
+  Segmentación de bancos por modelo de negocio con datos oficiales, desempeño por segmento, ubicación de Supervielle y sus pares reales, oportunidades no obvias para Supervielle dimensionadas, con gráficos y límites del análisis.
