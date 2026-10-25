@@ -170,6 +170,7 @@ Pregunta de negocio
 | **pdftotext** (poppler) | Para la historia mensual desde los PDF del BCRA. Sin él, el skill funciona con los últimos 5 períodos de la API y lo avisa |
 | **Acceso de red** | `www.bcra.gob.ar`, `api.bcra.gob.ar`, `apis.datos.gob.ar`, `www.indec.gob.ar` |
 | **Skill bcra-oraculo 2.1 o posterior** (misma versión mayor, 2.x) | Es la capa de datos: arma el panel de bancos desde el BCRA. Se instala aparte, desde [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases). El estratega lo busca solo y controla su versión; si falta o no es compatible, lo dice y explica qué instalar |
+| **Skill revisor-independiente 1.0 o posterior** (misma versión mayor, 1.x) | Es la capa de control: revisa cada análisis antes de que llegue a vos. Se instala aparte, desde [Independent-Reviewer](https://github.com/AGVD-CODE/Independent-Reviewer/releases). Si falta, el estratega hace una revisión reducida y te avisa qué instalar |
 
 **Tiempo y costo:** un análisis completo, con datos, varios análisis, revisión y gráficos, lleva unos **30 a 45 minutos** y del orden de **300 a 400 mil tokens**. Es un trabajo de analista, no una consulta rápida. Para un dato suelto ("¿cuántas tarjetas tiene Galicia?") conviene el skill complementario [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle), que responde en segundos.
 
@@ -177,23 +178,24 @@ Pregunta de negocio
 
 ## Instalación
 
-Se instalan **dos skills**: el estratega y su capa de datos, bcra-oraculo.
+Se instalan **tres skills**: el estratega, su capa de datos (bcra-oraculo) y su revisor (revisor-independiente).
 
 **En claude.ai**
-1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill) y `bcra-oraculo.skill` de la [última release de BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases/latest).
-2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí los dos archivos.
+1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill), `bcra-oraculo.skill` de la [última release de BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases/latest) y `revisor-independiente.skill` de la [última release de Independent-Reviewer](https://github.com/AGVD-CODE/Independent-Reviewer/releases/latest).
+2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí los tres archivos.
 3. Activá la herramienta de análisis (ejecución de código) y habilitá el acceso de red a los dominios de la tabla de requisitos.
 
 **En Claude Code**
 ```bash
 git clone https://github.com/AGVD-CODE/Banking-Metrics-Analyst.git
 git clone https://github.com/AGVD-CODE/BCRA-Oracle.git
+git clone https://github.com/AGVD-CODE/Independent-Reviewer.git
 mkdir -p ~/.claude/skills
-cp -R Banking-Metrics-Analyst/skill/estratega-bancario BCRA-Oracle/skill/bcra-oraculo ~/.claude/skills/
+cp -R Banking-Metrics-Analyst/skill/estratega-bancario BCRA-Oracle/skill/bcra-oraculo Independent-Reviewer/skill/revisor-independiente ~/.claude/skills/
 pip install -r ~/.claude/skills/estratega-bancario/scripts/requirements.txt
 ```
 
-**Para actualizar** cualquiera de los dos, reemplazá su carpeta (o volvé a subir su `.skill`). Cada uno se mejora por su cuenta: mientras bcra-oraculo no cambie de versión mayor, el estratega usa la versión nueva sin tocarlo.
+**Para actualizar** cualquiera de los tres, reemplazá su carpeta (o volvé a subir su `.skill`). Cada uno se mejora por su cuenta: mientras bcra-oraculo o el revisor no cambien de versión mayor, el estratega usa la versión nueva sin tocarlo.
 
 Instalá también pdftotext, con el comando de tu sistema:
 ```bash
@@ -249,15 +251,16 @@ Banking-Metrics-Analyst/
 │   │   ├── metodologia.md          → cómo leer cada análisis y checklist de robustez
 │   │   ├── contexto_argentino.md   → regímenes 2014-2026, inflación, fusiones, estructura del sistema
 │   │   ├── oportunidades.md        → playbook de hipótesis, dimensionamiento y priorización
-│   │   ├── revisor.md              → instrucciones del revisor independiente
+│   │   ├── revision_bancaria.md    → lista de control bancaria que se le pasa al revisor
 │   │   ├── fuentes_macro.md        → catálogo de series macro y trampas de cada fuente
 │   │   └── contrato.md             → qué necesita, qué entrega y cómo se versiona
 │   ├── scripts/
 │   │   ├── panel.py                → panel de bancos: ubica bcra-oraculo, controla su versión y le pide el panel
+│   │   ├── revisor.py              → ubica revisor-independiente y controla su versión
 │   │   ├── macro_ar.py             → series macro mensuales
 │   │   ├── analizar.py             → los 10 análisis
 │   │   ├── graficos.py             → estilo y gráficos
-│   │   ├── _comun.py               → versión del skill y búsqueda de bcra-oraculo
+│   │   ├── _comun.py               → versión del skill y búsqueda de bcra-oraculo y del revisor
 │   │   └── requirements.txt
 │   └── evals/                      → casos de prueba (formato `claude plugin eval`)
 └── docs/
@@ -284,13 +287,19 @@ Este skill es una pieza de una biblioteca de skills especializados que se encade
 ```
 bcra-oraculo 2.x  ──►  estratega-bancario 1.x  ──►  (futuros: riesgo, rentabilidad, presentación para directorio…)
  capa de datos          capa de análisis
+                               │
+                               ▼
+                     revisor-independiente 1.x
+                     capa de control: revisa antes de entregar
 ```
+
+El revisor es general: el estratega le pasa su lista de control bancaria, y cualquier otro skill que produzca análisis con números puede usarlo con su propia lista.
 
 **Cómo se mantienen independientes:** cada skill publica un **contrato** (qué recibe, qué entrega y en qué formato) con número de versión.
 - Las mejoras que no rompen el contrato suben la versión menor y llegan solas a los skills que dependen de él.
 - Un cambio de contrato sube la versión mayor. El skill que depende lo detecta y avisa, en lugar de fallar en silencio.
 
-Contratos: el de este skill en [`references/contrato.md`](skill/estratega-bancario/references/contrato.md) y el de bcra-oraculo en su [`references/contrato.md`](https://github.com/AGVD-CODE/BCRA-Oracle/blob/main/skill/bcra-oraculo/references/contrato.md).
+Contratos: el de este skill en [`references/contrato.md`](skill/estratega-bancario/references/contrato.md), el de bcra-oraculo en su [`references/contrato.md`](https://github.com/AGVD-CODE/BCRA-Oracle/blob/main/skill/bcra-oraculo/references/contrato.md) y el del revisor en su [`references/contrato.md`](https://github.com/AGVD-CODE/Independent-Reviewer/blob/main/skill/revisor-independiente/references/contrato.md).
 
 ---
 

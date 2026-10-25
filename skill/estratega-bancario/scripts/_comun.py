@@ -4,6 +4,8 @@ Funciones compartidas por los scripts del Estratega Bancario.
 
 - Ubica el skill bcra-oraculo instalado (la capa de datos del BCRA), controla que su
   versión sea compatible e importa su interfaz pública.
+- Ubica el skill revisor-independiente instalado (la revisión antes de entregar) y
+  controla su versión.
 - Salida JSON uniforme y manejo de errores.
 
 No se ejecuta solo.
@@ -18,11 +20,15 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 
 
 # Versión de este skill (ver references/contrato.md).
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 # Versión de bcra-oraculo con la que este skill es compatible: misma mayor y al menos esta menor.
 ORACULO_REQUERIDO = (2, 1)
 ORACULO_URL = 'https://github.com/AGVD-CODE/BCRA-Oracle/releases'
+
+# Lo mismo para revisor-independiente (su versión está en el archivo VERSION de su raíz).
+REVISOR_REQUERIDO = (1, 0)
+REVISOR_URL = 'https://github.com/AGVD-CODE/Independent-Reviewer/releases'
 
 
 def _version(ruta_comun):
@@ -86,6 +92,41 @@ def importar_bcra():
         sys.path.insert(0, o['scripts'])
     import bcra_comun  # noqa: E402
     return bcra_comun
+
+
+def _candidatos_revisor():
+    env = os.environ.get('REVISOR_DIR')
+    if env:
+        yield env
+    yield os.path.join(os.path.dirname(os.path.dirname(AQUI)), 'revisor-independiente')
+    for patron in ('~/.claude/skills/revisor-independiente', '~/.claude/skills/*/revisor-independiente',
+                   '/mnt/skills/*/revisor-independiente', '/mnt/skills/*/*/revisor-independiente',
+                   '~/Library/Application Support/Claude/*/*/*/*/skills/revisor-independiente'):
+        for d in sorted(glob.glob(os.path.expanduser(patron))):
+            yield d
+
+
+def ubicar_revisor():
+    """Busca el skill revisor-independiente instalado y controla que su versión sea compatible.
+
+    Devuelve (revisor, encontrados): revisor es {'dir', 'version'} o None si no hay uno compatible;
+    encontrados, todas las carpetas vistas con su versión. REVISOR_DIR permite indicar la carpeta."""
+    vistos, encontrados = set(), []
+    for d in _candidatos_revisor():
+        d = os.path.abspath(d)
+        if d in vistos or not os.path.exists(os.path.join(d, 'SKILL.md')):
+            continue
+        vistos.add(d)
+        try:
+            with open(os.path.join(d, 'VERSION'), encoding='utf-8') as f:
+                m = re.match(r'\s*(\d+)\.(\d+)\.(\d+)', f.read())
+            v = tuple(int(x) for x in m.groups()) if m else None
+        except OSError:
+            v = None
+        encontrados.append({'dir': d, 'version': v})
+        if v and v[0] == REVISOR_REQUERIDO[0] and v[1] >= REVISOR_REQUERIDO[1]:
+            return encontrados[-1], encontrados
+    return None, encontrados
 
 
 def salida(obj, codigo=0):
