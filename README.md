@@ -6,7 +6,7 @@ Un **Skill de Claude** que trabaja como un analista de estrategia bancaria con 2
 
 Le hacés una pregunta de negocio en lenguaje natural, por ejemplo: *"¿en qué productos está perdiendo terreno el Banco Macro frente a Galicia, Santander y BBVA, y qué oportunidades tiene para 2027?"*. El skill:
 
-1. **Baja los datos oficiales en vivo** de todos los bancos del BCRA, mes a mes desde 2014, y las series macro del BCRA, el INDEC y datos.gob.ar.
+1. **Baja los datos oficiales en vivo** de todos los bancos del BCRA, mes a mes desde 2014, a través de su capa de datos ([BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle)), y las series macro del BCRA, el INDEC y datos.gob.ar.
 2. **Corre los análisis** que haría un equipo de estrategia: cuotas de mercado, benchmarking contra pares, rentabilidad, correlaciones con la macro, segmentación por modelo de negocio, sensibilidad de la mora y detección de anomalías.
 3. **Encuentra lo que no se ve a simple vista** y lo traduce en **oportunidades de negocio con tamaño en pesos**, priorizadas y con primer paso.
 4. **Hace revisar el trabajo por un segundo analista independiente** (otro agente) antes de responder.
@@ -94,7 +94,8 @@ Pregunta de negocio
    │
    ├─ 0. Encuadre: banco foco, pares, horizonte (sin frenar con preguntas)
    ├─ 1. Hipótesis de un estratega experimentado, antes de mirar datos
-   ├─ 2. Datos oficiales en vivo: panel de bancos (BCRA) + macro (BCRA, INDEC, datos.gob.ar)
+   ├─ 2. Datos oficiales en vivo: panel de bancos (lo arma bcra-oraculo, la capa de datos)
+   │     + macro (BCRA, INDEC, datos.gob.ar)
    │     · pesos constantes · pro forma por fusiones (Macro + Itaú, Galicia + HSBC)
    ├─ 3. Control de calidad: errores de carga, saltos de cuota, fusiones, devaluación, blanqueo
    ├─ 4. Análisis: cuotas · brechas · rentabilidad · correlaciones · segmentación
@@ -168,7 +169,7 @@ Pregunta de negocio
 | **Python 3.8+** | `pandas`, `numpy`, `scipy`, `scikit-learn`, `statsmodels`, `matplotlib` (ver [`requirements.txt`](skill/estratega-bancario/scripts/requirements.txt)) |
 | **pdftotext** (poppler) | Para la historia mensual desde los PDF del BCRA. Sin él, el skill funciona con los últimos 5 períodos de la API y lo avisa |
 | **Acceso de red** | `www.bcra.gob.ar`, `api.bcra.gob.ar`, `apis.datos.gob.ar`, `www.indec.gob.ar` |
-| **Otros skills** | Ninguno. Incluye su propia copia del módulo de acceso al BCRA de [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle) |
+| **Skill bcra-oraculo 2.1 o posterior** (misma versión mayor, 2.x) | Es la capa de datos: arma el panel de bancos desde el BCRA. Se instala aparte, desde [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases). El estratega lo busca solo y controla su versión; si falta o no es compatible, lo dice y explica qué instalar |
 
 **Tiempo y costo:** un análisis completo, con datos, varios análisis, revisión y gráficos, lleva unos **30 a 45 minutos** y del orden de **300 a 400 mil tokens**. Es un trabajo de analista, no una consulta rápida. Para un dato suelto ("¿cuántas tarjetas tiene Galicia?") conviene el skill complementario [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle), que responde en segundos.
 
@@ -176,17 +177,23 @@ Pregunta de negocio
 
 ## Instalación
 
+Se instalan **dos skills**: el estratega y su capa de datos, bcra-oraculo.
+
 **En claude.ai**
-1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill).
-2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí el archivo.
+1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill) y `bcra-oraculo.skill` de la [última release de BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases/latest).
+2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí los dos archivos.
 3. Activá la herramienta de análisis (ejecución de código) y habilitá el acceso de red a los dominios de la tabla de requisitos.
 
 **En Claude Code**
 ```bash
 git clone https://github.com/AGVD-CODE/Banking-Metrics-Analyst.git
-cp -R Banking-Metrics-Analyst/skill/estratega-bancario ~/.claude/skills/
+git clone https://github.com/AGVD-CODE/BCRA-Oracle.git
+mkdir -p ~/.claude/skills
+cp -R Banking-Metrics-Analyst/skill/estratega-bancario BCRA-Oracle/skill/bcra-oraculo ~/.claude/skills/
 pip install -r ~/.claude/skills/estratega-bancario/scripts/requirements.txt
 ```
+
+**Para actualizar** cualquiera de los dos, reemplazá su carpeta (o volvé a subir su `.skill`). Cada uno se mejora por su cuenta: mientras bcra-oraculo no cambie de versión mayor, el estratega usa la versión nueva sin tocarlo.
 
 Instalá también pdftotext, con el comando de tu sistema:
 ```bash
@@ -234,6 +241,7 @@ En las tres preguntas, el corrector eligió la respuesta del skill actual como l
 Banking-Metrics-Analyst/
 ├── README.md
 ├── LICENSE
+├── CHANGELOG.md
 ├── estratega-bancario.skill        → skill empaquetado, listo para instalar
 ├── skill/estratega-bancario/
 │   ├── SKILL.md                    → instrucciones del analista (criterio, flujo, reglas de rigor, formato)
@@ -243,14 +251,13 @@ Banking-Metrics-Analyst/
 │   │   ├── oportunidades.md        → playbook de hipótesis, dimensionamiento y priorización
 │   │   ├── revisor.md              → instrucciones del revisor independiente
 │   │   ├── fuentes_macro.md        → catálogo de series macro y trampas de cada fuente
-│   │   ├── diccionario_bcra.md     → qué es cada campo del BCRA
-│   │   └── fuentes_bcra.md         → fuentes del BCRA y sus trampas
+│   │   └── contrato.md             → qué necesita, qué entrega y cómo se versiona
 │   ├── scripts/
-│   │   ├── panel_bcra.py           → panel de bancos (API + PDF mensuales, entidades históricas)
+│   │   ├── panel.py                → panel de bancos: ubica bcra-oraculo, controla su versión y le pide el panel
 │   │   ├── macro_ar.py             → series macro mensuales
 │   │   ├── analizar.py             → los 10 análisis
 │   │   ├── graficos.py             → estilo y gráficos
-│   │   ├── bcra_comun.py           → acceso al BCRA (de BCRA-Oracle)
+│   │   ├── _comun.py               → versión del skill y búsqueda de bcra-oraculo
 │   │   └── requirements.txt
 │   └── evals/                      → casos de prueba (formato `claude plugin eval`)
 └── docs/
@@ -263,10 +270,27 @@ Banking-Metrics-Analyst/
 
 ## Limitaciones
 
-- **Depende de fuentes oficiales que cambian sin aviso.** Si el BCRA o el INDEC cambian un formato, una descarga puede fallar. El skill lo informa y no responde de memoria. `references/fuentes_bcra.md` y `fuentes_macro.md` explican cómo adaptarlo.
+- **Depende de fuentes oficiales que cambian sin aviso.** Si el BCRA o el INDEC cambian un formato, una descarga puede fallar. El skill lo informa y no responde de memoria. `references/fuentes_macro.md` (macro) y `references/fuentes.md` de bcra-oraculo (entidades) explican cómo adaptarlo.
 - **Son datos públicos y agregados por entidad.** Sirven para estrategia y benchmarking, no para decisiones de crédito individuales.
 - **Las oportunidades son órdenes de magnitud con supuestos explícitos**, no metas. Hay que validarlas con la rentabilidad interna por producto de cada banco.
 - **Las correlaciones con la macro dependen del régimen.** Con pocos ciclos completos, el skill las informa como rangos y califica su fuerza.
+
+---
+
+## Arquitectura en capas
+
+Este skill es una pieza de una biblioteca de skills especializados que se encadenan. Cada uno se mejora por su cuenta y le pasa su resultado al siguiente:
+
+```
+bcra-oraculo 2.x  ──►  estratega-bancario 1.x  ──►  (futuros: riesgo, rentabilidad, presentación para directorio…)
+ capa de datos          capa de análisis
+```
+
+**Cómo se mantienen independientes:** cada skill publica un **contrato** (qué recibe, qué entrega y en qué formato) con número de versión.
+- Las mejoras que no rompen el contrato suben la versión menor y llegan solas a los skills que dependen de él.
+- Un cambio de contrato sube la versión mayor. El skill que depende lo detecta y avisa, en lugar de fallar en silencio.
+
+Contratos: el de este skill en [`references/contrato.md`](skill/estratega-bancario/references/contrato.md) y el de bcra-oraculo en su [`references/contrato.md`](https://github.com/AGVD-CODE/BCRA-Oracle/blob/main/skill/bcra-oraculo/references/contrato.md).
 
 ---
 
@@ -279,7 +303,7 @@ Banking-Metrics-Analyst/
 
 ## Proyectos relacionados
 
-- [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle): responde en segundos datos puntuales del sistema financiero argentino (BCRA e INDEC). Este skill usa su módulo de acceso a datos.
+- [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle) (`bcra-oraculo`): la capa de datos. Responde en segundos datos puntuales del sistema financiero argentino (BCRA e INDEC) y le arma a este skill los paneles de bancos.
 
 ## Licencia
 
