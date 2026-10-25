@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Motor de análisis del Estratega Bancario. Trabaja sobre el panel de
-panel_bcra.py y las series de macro_ar.py.
+panel.py (bcra-oraculo) y las series de macro_ar.py.
 
 Subcomandos (cada uno imprime un JSON, guarda un CSV con el detalle y, salvo
 `preparar` y `calidad`, un gráfico PNG):
@@ -265,7 +265,7 @@ def resolver(df, q):
         cm.salida({'error': '"%s" coincide con varias entidades' % q0,
                    'candidatos': {c: ents.set_index('codigo').loc[c, 'entidad'] for c in cands}}, 2)
     cm.salida({'error': '"%s" no está en el panel' % q0,
-               'ayuda': 'Ver lista_entidades del JSON de panel_bcra.py o ampliar --entidades'}, 2)
+               'ayuda': 'Ver lista_entidades del JSON de panel.py o ampliar --entidades'}, 2)
 
 
 def nombre(df, cod):
@@ -426,7 +426,7 @@ def exigir_campos(df, campos):
     if faltan:
         cm.salida({'error': 'Campos que no están en los datos: %s' % faltan,
                    'ayuda': 'Los derivados (mix_*, cuota_*, *_ia, eficiencia, etc.) se crean con '
-                            '"preparar"; los del BCRA hay que pedirlos en panel_bcra.py --campos (ver references/diccionario_bcra.md)'}, 2)
+                            '"preparar"; los del BCRA hay que pedirlos en panel.py --campos (ver references/diccionario.md de bcra-oraculo)'}, 2)
 
 
 # =========================================================== preparar
@@ -1140,7 +1140,7 @@ def cmd_correlacion(a):
                     pruebas.append(res)
     if not pruebas:
         cm.salida({'error': 'Sin pares con al menos 8 observaciones comunes',
-                   'ayuda': 'Ampliar el panel en el tiempo (--meses en panel_bcra.py) o usar transform mensual'}, 2)
+                   'ayuda': 'Ampliar el panel en el tiempo (--meses en panel.py) o usar transform mensual'}, 2)
     q = bh([p['p'] for p in pruebas])
     for p, qq in zip(pruebas, q):
         p['q'] = float(qq)
@@ -1651,7 +1651,7 @@ def main():
     p.add_argument('--salida', default='analitico.csv')
 
     p = sub.add_parser('proforma')
-    p.add_argument('--panel', required=True, help='panel nominal de panel_bcra.py --historicas')
+    p.add_argument('--panel', required=True, help='panel nominal de panel.py --historicas')
     p.add_argument('--fusion', nargs='+', required=True, help='ABSORBENTE=CODIGO_ABSORBIDA, ej. Galicia=150 Macro=259')
     p.add_argument('--salida', default='panel_pf.csv')
 
