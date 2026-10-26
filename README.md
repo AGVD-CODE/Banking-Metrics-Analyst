@@ -170,6 +170,7 @@ Pregunta de negocio
 | **pdftotext** (poppler) | Para la historia mensual desde los PDF del BCRA. Sin él, el skill funciona con los últimos 5 períodos de la API y lo avisa |
 | **Acceso de red** | `www.bcra.gob.ar`, `api.bcra.gob.ar`, `apis.datos.gob.ar`, `www.indec.gob.ar` |
 | **Skill bcra-oraculo 2.1 o posterior** (misma versión mayor, 2.x) | Es la capa de datos: arma el panel de bancos desde el BCRA. Se instala aparte, desde [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases). El estratega lo busca solo y controla su versión; si falta o no es compatible, lo dice y explica qué instalar |
+| **Skill riesgo-bancario 1.0 o posterior** (opcional) | Es la capa de riesgo: salud tipo CAMELS, prueba de estrés y alertas de maquillaje de cartera. El estratega la usa para filtrar el riesgo de cada oportunidad y en el resumen del mes. Se instala aparte, desde [Banking-Risk-Analyst](https://github.com/AGVD-CODE/Banking-Risk-Analyst/releases), y necesita bcra-oraculo 2.2. Si falta, el estratega sigue y lo aclara |
 | **Skill revisor-independiente 1.0 o posterior** (misma versión mayor, 1.x) | Es la capa de control: revisa cada análisis antes de que llegue a vos. Se instala aparte, desde [Independent-Reviewer](https://github.com/AGVD-CODE/Independent-Reviewer/releases). Si falta, el estratega hace una revisión reducida y te avisa qué instalar |
 
 **Tiempo y costo:** un análisis completo, con datos, varios análisis, revisión y gráficos, lleva unos **30 a 45 minutos** y del orden de **300 a 400 mil tokens**. Es un trabajo de analista, no una consulta rápida. Para un dato suelto ("¿cuántas tarjetas tiene Galicia?") conviene el skill complementario [BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle), que responde en segundos.
@@ -178,11 +179,11 @@ Pregunta de negocio
 
 ## Instalación
 
-Se instalan **tres skills**: el estratega, su capa de datos (bcra-oraculo) y su revisor (revisor-independiente).
+Se instalan **tres skills**: el estratega, su capa de datos (bcra-oraculo) y su revisor (revisor-independiente). Conviene sumar un cuarto, **riesgo-bancario**, para el filtro de riesgo.
 
 **En claude.ai**
-1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill), `bcra-oraculo.skill` de la [última release de BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases/latest) y `revisor-independiente.skill` de la [última release de Independent-Reviewer](https://github.com/AGVD-CODE/Independent-Reviewer/releases/latest).
-2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí los tres archivos.
+1. Descargá [`estratega-bancario.skill`](estratega-bancario.skill), `bcra-oraculo.skill` de la [última release de BCRA-Oracle](https://github.com/AGVD-CODE/BCRA-Oracle/releases/latest) y `revisor-independiente.skill` de la [última release de Independent-Reviewer](https://github.com/AGVD-CODE/Independent-Reviewer/releases/latest). Opcional: `riesgo-bancario.skill` de la [última release de Banking-Risk-Analyst](https://github.com/AGVD-CODE/Banking-Risk-Analyst/releases/latest).
+2. Andá a Configuración → Skills (según la versión, Capacidades → Skills) y subí los archivos.
 3. Activá la herramienta de análisis (ejecución de código) y habilitá el acceso de red a los dominios de la tabla de requisitos.
 
 **En Claude Code**
@@ -190,8 +191,9 @@ Se instalan **tres skills**: el estratega, su capa de datos (bcra-oraculo) y su 
 git clone https://github.com/AGVD-CODE/Banking-Metrics-Analyst.git
 git clone https://github.com/AGVD-CODE/BCRA-Oracle.git
 git clone https://github.com/AGVD-CODE/Independent-Reviewer.git
+git clone https://github.com/AGVD-CODE/Banking-Risk-Analyst.git
 mkdir -p ~/.claude/skills
-cp -R Banking-Metrics-Analyst/skill/estratega-bancario BCRA-Oracle/skill/bcra-oraculo Independent-Reviewer/skill/revisor-independiente ~/.claude/skills/
+cp -R Banking-Metrics-Analyst/skill/estratega-bancario BCRA-Oracle/skill/bcra-oraculo Independent-Reviewer/skill/revisor-independiente Banking-Risk-Analyst/skill/riesgo-bancario ~/.claude/skills/
 pip install -r ~/.claude/skills/estratega-bancario/scripts/requirements.txt
 ```
 
@@ -257,8 +259,9 @@ Banking-Metrics-Analyst/
 │   ├── scripts/
 │   │   ├── panel.py                → panel de bancos: ubica bcra-oraculo, controla su versión y le pide el panel
 │   │   ├── revisor.py              → ubica revisor-independiente y controla su versión
+│   │   ├── filtro_riesgo.py        → usa riesgo-bancario (opcional) para el filtro de riesgo
 │   │   ├── macro_ar.py             → series macro mensuales
-│   │   ├── analizar.py             → los 10 análisis
+│   │   ├── analizar.py             → los análisis (incluido el resumen del mes, novedades)
 │   │   ├── graficos.py             → estilo y gráficos
 │   │   ├── _comun.py               → versión del skill y búsqueda de bcra-oraculo y del revisor
 │   │   └── requirements.txt
@@ -285,13 +288,15 @@ Banking-Metrics-Analyst/
 Este skill es una pieza de una biblioteca de skills especializados que se encadenan. Cada uno se mejora por su cuenta y le pasa su resultado al siguiente:
 
 ```
-bcra-oraculo 2.x  ──►  estratega-bancario 1.x  ──►  (futuros: riesgo, rentabilidad, presentación para directorio…)
- capa de datos          capa de análisis
-                               │
-                               ▼
-                     revisor-independiente 1.x
-                     capa de control: revisa antes de entregar
+bcra-oraculo 2.x ──► estratega-bancario 1.x ──► revisor-independiente 1.x
+ capa de datos   │    capa de análisis           capa de control: revisa antes de entregar
+                 │          │
+                 │          ▼ (opcional)
+                 └──► riesgo-bancario 1.x
+                      capa de riesgo: salud, estrés y alertas de cartera
 ```
+
+Futuras capas posibles: rentabilidad por producto, presentación para el directorio.
 
 El revisor es general: el estratega le pasa su lista de control bancaria, y cualquier otro skill que produzca análisis con números puede usarlo con su propia lista.
 

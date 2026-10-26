@@ -1,7 +1,7 @@
 ---
 name: estratega-bancario
 description: Analista estratégico senior (20+ años en banca argentina) que encuentra insights ocultos en las métricas de los bancos y los convierte en oportunidades de negocio dimensionadas. Compara la historia de muchas entidades con datos oficiales del BCRA, los cruza con la macro (inflación, tipo de cambio, tasas, actividad, salarios, empleo) y corre cuotas de mercado, brechas contra pares, correlaciones con rezagos, segmentación de modelos de negocio, sensibilidad macro y detección de anomalías, con gráficos. Usar SIEMPRE que el usuario quiera analizar, diagnosticar, comparar o hacer benchmarking de bancos argentinos más allá de un dato puntual, por ejemplo por qué un banco gana o pierde cuota, dónde crecer, qué producto o segmento atacar, qué le pega la macro a la mora o al crédito, qué esconden los datos, o para preparar estrategia comercial, un plan de negocios o un comité. Para un dato suelto (cuánto tiene, quién tiene más) alcanza con bcra-oraculo.
-compatibility: Requiere el skill bcra-oraculo 2.1 o posterior (misma versión mayor), que es su capa de datos, y el skill revisor-independiente 1.x, que revisa cada análisis antes de entregarlo. Python 3.8+ con pandas, numpy, scipy, scikit-learn, statsmodels y matplotlib (scripts/requirements.txt). pdftotext (poppler) para historia mensual. Red a www.bcra.gob.ar, api.bcra.gob.ar, apis.datos.gob.ar y www.indec.gob.ar.
+compatibility: Requiere el skill bcra-oraculo 2.1 o posterior (misma versión mayor), que es su capa de datos, y el skill revisor-independiente 1.x, que revisa cada análisis antes de entregarlo. Opcional: riesgo-bancario 1.x (con bcra-oraculo 2.2), para el filtro de riesgo de las oportunidades y las alertas de cartera. Python 3.8+ con pandas, numpy, scipy, scikit-learn, statsmodels y matplotlib (scripts/requirements.txt). pdftotext (poppler) para historia mensual. Red a www.bcra.gob.ar, api.bcra.gob.ar, apis.datos.gob.ar y www.indec.gob.ar.
 ---
 
 # Estratega Bancario · Argentina
@@ -79,6 +79,7 @@ Elegí según la pregunta. Corré en paralelo los que no dependan entre sí. Cad
 | ¿Cuánto le pega la macro a cada banco? ¿Quién es más defensivo? | `sensibilidad` | `analizar.py sensibilidad --datos analitico_largo.csv --macro macro.csv --y irr_cons --x salario_real tasa_real_personales --rezago 6 --excluir 2020-04:2022-03 --foco Galicia` |
 | ¿El crecimiento del crédito de hoy es la mora de mañana? (efecto cosecha) | `sensibilidad` | `analizar.py sensibilidad --datos analitico_largo.csv --y irr_cons --x-propias bPers_ia:nivel --rezago 12 --excluir 2020-04:2022-03` |
 | ¿Qué cambió fuera de lo normal en el último año? | `anomalias` | `analizar.py anomalias --datos analitico.csv --universo top20` |
+| ¿Qué pasó este mes? ¿Qué es lo importante? (respuesta rápida, sin el flujo completo) | `novedades` | `analizar.py novedades --datos analitico.csv` (con un panel de `--entidades todas`; suma las alertas de cartera de riesgo-bancario si está instalado) |
 | Mirar una evolución, un cuadrante o un ranking | `grafico` | `analizar.py grafico linea\|dispersion\|barras\|macro ...` (ver `--help`) |
 
 Universos y pares: `bancos` (por defecto), `privados`, `publicos`, `topN` (N mayores bancos por activo), o una lista de nombres. Los mejores pares suelen salir de `segmentar` (mismo modelo de negocio), no solo del tamaño. Variables útiles que crea `preparar`: `mix_*` (composición de cartera y fondeo), `cuota_*` (cuota de mercado), `*_ia` (crecimiento real interanual), `ld_ratio`, `titulos_activo`, `spread`, `costo_riesgo`, `eficiencia`, `fee_ratio`, `pers_por_remu`, `saldo_ca_prom`, `pla_por_tit`, e `irr_cons_sin_dilucion` (mora sobre la cartera de 12 meses antes: el que crece rápido diluye su mora). Bases de clientes para *fair share*: `remu` (cuentas sueldo), `cprev` (cuentas previsionales, es decir jubilados), `cah`, `tit`. Indicador temprano de mora: `con_s2` (consumo en situación 2, de 31 a 90 días). Macro: `python3 scripts/macro_ar.py --catalogo`.
@@ -94,6 +95,19 @@ Un hallazgo sube a insight si:
 
 ### 6. De hallazgo a negocio
 Para cada insight, definí qué haría el banco, cuánto vale y qué riesgo trae. `brechas` ya dimensiona brechas de mix, de penetración y de *fair share*. Las fórmulas, los escenarios y la matriz de priorización están en `references/oportunidades.md` (secciones 2 a 4). Una oportunidad que aumenta volumen en un segmento con mora en alza es primero un problema de riesgo: decilo.
+
+**Filtro de riesgo (si riesgo-bancario está instalado).** Antes de recomendar, pasá al banco foco por la mirada de riesgo:
+```bash
+python3 scripts/filtro_riesgo.py panel --salida trabajo/panel_riesgo.csv
+python3 scripts/filtro_riesgo.py salud --panel trabajo/panel_riesgo.csv --entidad <foco> > trabajo/riesgo_salud.json
+python3 scripts/filtro_riesgo.py estres --panel trabajo/panel_riesgo.csv --escenario severo --entidad <foco> > trabajo/riesgo_estres.json
+python3 scripts/filtro_riesgo.py alertas --panel trabajo/panel_riesgo.csv --entidad <foco> > trabajo/riesgo_alertas.json
+```
+Usalo así:
+- Una oportunidad que consume capital en un banco con capital débil, o que queda cerca del 6 % de capital sobre activo en el estrés severo, baja de prioridad o se condiciona.
+- Si hay alertas de cartera (castigos crecientes, crecimiento que diluye la mora), la mora del foco puede estar subestimada. Usá `mora_con_castigos_12m_pct` o `mora_sin_dilucion_pct` para dimensionar el riesgo de crecer.
+
+Si `filtro_riesgo.py` dice que no está instalado, seguí su `plan_b` y aclará en la respuesta que las oportunidades no pasaron por el filtro de riesgo.
 
 ### 7. Revisión independiente (siempre, antes de entregar)
 Escribí la respuesta completa en `trabajo/borrador.md`, con el formato de la sección "Formato de respuesta", y hacela revisar por **otro agente** que no participó del análisis. El que escribió el análisis no ve sus propios errores. En las pruebas de este skill aparecieron errores que un revisor atrapa: un ratio mal calculado, un titular apoyado en medianas que el promedio ponderado contradecía y una "fuga" que era un escalón único.
@@ -156,6 +170,7 @@ Estilo: español rioplatense profesional, números en formato argentino (1.234,5
 - **Falta pdftotext:** `apt-get install -y poppler-utils` o `brew install poppler`. Sin él, `panel.py` usa solo la API (5 períodos: 3 meses y 2 diciembres) y lo avisa. Decilo en la respuesta: sin historia no hay correlaciones temporales ni sensibilidad.
 - **`sin_acceso_red`:** pedir que se habiliten los dominios de la sección de compatibilidad. Nunca responder de memoria.
 - **Falta bcra-oraculo o su versión no es compatible:** `panel.py` lo dice y explica qué instalar (https://github.com/AGVD-CODE/BCRA-Oracle/releases). Si está en otra carpeta, definir `BCRA_ORACULO_DIR`.
+- **Falta riesgo-bancario:** es opcional. `filtro_riesgo.py` explica qué instalar (https://github.com/AGVD-CODE/Banking-Risk-Analyst/releases) y cómo seguir sin él. Si está en otra carpeta, definir `RIESGO_DIR`.
 - **Falta revisor-independiente o su versión no es compatible:** `revisor.py` lo dice, explica qué instalar (https://github.com/AGVD-CODE/Independent-Reviewer/releases) y trae el plan B. Si está en otra carpeta, definir `REVISOR_DIR`.
 - **Una fuente cambió de formato:** ver `references/fuentes_macro.md` (macro) y `references/fuentes.md` de bcra-oraculo (entidades).
 

@@ -4,8 +4,8 @@ Funciones compartidas por los scripts del Estratega Bancario.
 
 - Ubica el skill bcra-oraculo instalado (la capa de datos del BCRA), controla que su
   versión sea compatible e importa su interfaz pública.
-- Ubica el skill revisor-independiente instalado (la revisión antes de entregar) y
-  controla su versión.
+- Ubica los skills revisor-independiente (la revisión antes de entregar) y riesgo-bancario
+  (el filtro de riesgo, opcional) y controla su versión.
 - Salida JSON uniforme y manejo de errores.
 
 No se ejecuta solo.
@@ -20,7 +20,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 
 
 # Versión de este skill (ver references/contrato.md).
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 
 # Versión de bcra-oraculo con la que este skill es compatible: misma mayor y al menos esta menor.
 ORACULO_REQUERIDO = (2, 1)
@@ -29,6 +29,10 @@ ORACULO_URL = 'https://github.com/AGVD-CODE/BCRA-Oracle/releases'
 # Lo mismo para revisor-independiente (su versión está en el archivo VERSION de su raíz).
 REVISOR_REQUERIDO = (1, 0)
 REVISOR_URL = 'https://github.com/AGVD-CODE/Independent-Reviewer/releases'
+
+# Lo mismo para riesgo-bancario (opcional: si falta, el estratega sigue sin filtro de riesgo).
+RIESGO_REQUERIDO = (1, 0)
+RIESGO_URL = 'https://github.com/AGVD-CODE/Banking-Risk-Analyst/releases'
 
 
 def _version(ruta_comun):
@@ -94,25 +98,25 @@ def importar_bcra():
     return bcra_comun
 
 
-def _candidatos_revisor():
-    env = os.environ.get('REVISOR_DIR')
+def _candidatos_skill(nombre, variable):
+    env = os.environ.get(variable)
     if env:
         yield env
-    yield os.path.join(os.path.dirname(os.path.dirname(AQUI)), 'revisor-independiente')
-    for patron in ('~/.claude/skills/revisor-independiente', '~/.claude/skills/*/revisor-independiente',
-                   '/mnt/skills/*/revisor-independiente', '/mnt/skills/*/*/revisor-independiente',
-                   '~/Library/Application Support/Claude/*/*/*/*/skills/revisor-independiente'):
-        for d in sorted(glob.glob(os.path.expanduser(patron))):
+    yield os.path.join(os.path.dirname(os.path.dirname(AQUI)), nombre)
+    for patron in ('~/.claude/skills/%s', '~/.claude/skills/*/%s', '/mnt/skills/*/%s', '/mnt/skills/*/*/%s',
+                   '~/Library/Application Support/Claude/*/*/*/*/skills/%s'):
+        for d in sorted(glob.glob(os.path.expanduser(patron % nombre))):
             yield d
 
 
-def ubicar_revisor():
-    """Busca el skill revisor-independiente instalado y controla que su versión sea compatible.
+def ubicar_skill(nombre, variable, requerido):
+    """Busca un skill instalado que declara su versión en el archivo VERSION de su raíz.
 
-    Devuelve (revisor, encontrados): revisor es {'dir', 'version'} o None si no hay uno compatible;
-    encontrados, todas las carpetas vistas con su versión. REVISOR_DIR permite indicar la carpeta."""
+    Devuelve (skill, encontrados): skill es {'dir', 'version'} o None si no hay uno compatible
+    (misma mayor y al menos la menor de `requerido`); encontrados, todas las carpetas vistas.
+    La variable de entorno `variable` permite indicar la carpeta a mano."""
     vistos, encontrados = set(), []
-    for d in _candidatos_revisor():
+    for d in _candidatos_skill(nombre, variable):
         d = os.path.abspath(d)
         if d in vistos or not os.path.exists(os.path.join(d, 'SKILL.md')):
             continue
@@ -124,9 +128,19 @@ def ubicar_revisor():
         except OSError:
             v = None
         encontrados.append({'dir': d, 'version': v})
-        if v and v[0] == REVISOR_REQUERIDO[0] and v[1] >= REVISOR_REQUERIDO[1]:
+        if v and v[0] == requerido[0] and v[1] >= requerido[1]:
             return encontrados[-1], encontrados
     return None, encontrados
+
+
+def ubicar_revisor():
+    """revisor-independiente instalado (ver ubicar_skill). REVISOR_DIR indica la carpeta a mano."""
+    return ubicar_skill('revisor-independiente', 'REVISOR_DIR', REVISOR_REQUERIDO)
+
+
+def ubicar_riesgo():
+    """riesgo-bancario instalado (ver ubicar_skill). RIESGO_DIR indica la carpeta a mano."""
+    return ubicar_skill('riesgo-bancario', 'RIESGO_DIR', RIESGO_REQUERIDO)
 
 
 def salida(obj, codigo=0):

@@ -25,6 +25,8 @@ Subcomandos (cada uno imprime un JSON, guarda un CSV con el detalle y, salvo
   sensibilidad  elasticidad de una métrica bancaria a variables macro: OLS con
                 errores HAC por banco y panel con efectos fijos
   anomalias     cambios recientes fuera de lo normal vs historia propia y vs pares
+  novedades     lo más importante del mes, automático (con las alertas de cartera de
+                riesgo-bancario si está instalado)
   grafico       linea | dispersion | barras | macro (exploratorios)
 
 Uso típico:
@@ -316,7 +318,11 @@ def a_mensual(s):
 
 
 def excluir(s, rangos):
-    """Pone en NaN los meses dentro de rangos 'YYYY-MM:YYYY-MM' (después de transformar)."""
+    """Pone en NaN los meses dentro de rangos 'YYYY-MM:YYYY-MM'.
+
+    Se aplica a los niveles ANTES de transformar: así una variación de 12 meses que compara contra
+    un mes excluido también queda afuera (si no, los meses siguientes al período excluido seguían
+    arrastrando sus niveles distorsionados)."""
     if not rangos:
         return s
     s = s.copy()
@@ -450,15 +456,22 @@ def cmd_preparar(a):
     df['titulos_activo'] = div('bTi', 'bA')
     df['liquidez_activo'] = div('bEf', 'bA')
     df['pn_activo'] = div('bPN', 'bA')
+    # Un producto vacío ('---') en un banco que sí informa su cartera total es un producto que no
+    # tiene: cuenta como 0 % del mix, para no sacar a ese banco de la mediana de sus pares.
+    def parte(c, total):
+        return df[c].where(df[c].notna() | df[total].isna(), 0.0) if total in df else df[c]
+
     for k, c in (('mix_pers', 'bPers'), ('mix_hip', 'bHip'), ('mix_prend', 'bPrend'),
                  ('mix_doc', 'bDoc'), ('mix_adel', 'bAdel')):
-        df[k] = div(c, 'bPr_priv')
+        if c in df and 'bPr_priv' in df:
+            df[k] = 100 * parte(c, 'bPr_priv') / df['bPr_priv'].where(df['bPr_priv'] != 0)
     partes = [c for c in ('bPers', 'bHip', 'bPrend', 'bDoc', 'bAdel') if c in df]
     if 'bPr_priv' in df and partes:
         resto = df['bPr_priv'] - df[partes].fillna(0).sum(axis=1)
         df['mix_otros'] = 100 * resto.clip(lower=0) / df['bPr_priv'].where(df['bPr_priv'] != 0)
     for k, c in (('mix_cc', 'bCC'), ('mix_ca', 'bCA'), ('mix_pf', 'bPF')):
-        df[k] = div(c, 'bDe_priv')
+        if c in df and 'bDe_priv' in df:
+            df[k] = 100 * parte(c, 'bDe_priv') / df['bDe_priv'].where(df['bDe_priv'] != 0)
     if 'tasa_prest' in df and 'tasa_dep' in df:
         df['spread'] = df['tasa_prest'] - df['tasa_dep']
     mes = df['periodo'].str[5:7].astype(int)
@@ -1079,6 +1092,31 @@ def cmd_brechas(a):
 
 # =========================================================== correlación
 
+# Pares que se mueven juntos por construcción contable, no por un mecanismo económico: se
+# informan aparte para no presentarlos como hallazgos.
+FAMILIAS_CONTABLES = [
+    {'irr_tot', 'irr_cons', 'irr_com', 'irr_priv', 'tf_irregular', 'perdida_s2a5', 'perdida_s3a5',
+     'prev_irr', 'exc_prev', 'costo_riesgo', 'roa_inco', 'bInc', 'bPrev', 'irr_cons_sin_dilucion'},
+    {'roe', 'roe_ord', 'roa', 'roa_aig', 'bRes'},
+    {'bA', 'bP', 'bPN', 'pn_activo', 'apalancamiento', 'log_activo'},
+]
+
+
+def base_campo(c):
+    c = c.split(':')[0]
+    for pre in ('cuota_', 'mix_'):
+        if c.startswith(pre):
+            c = c[len(pre):]
+    return c[:-3] if c.endswith('_ia') else c
+
+
+def relacion_contable(x, y):
+    bx, by = base_campo(x), base_campo(y)
+    if bx == by:
+        return True
+    return any(bx in f and by in f for f in FAMILIAS_CONTABLES)
+
+
 def cmd_correlacion(a):
     df = cargar(a.datos)
     meta = meta_de(a.datos)
@@ -1101,7 +1139,9 @@ def cmd_correlacion(a):
             datos[x] = a_mensual(pd.to_numeric(mac[x.split(':')[0]], errors='coerce'))
     idx = sorted(set().union(*[set(s.index) for s in datos.values()]))
     idx = cm.meses_entre(idx[0], idx[-1])
-    tr = {k: excluir(transformar(s.reindex(idx), k, a.transform), a.excluir) for k, s in datos.items()}
+    # Las series bancarias se excluyen antes de transformar; las macro no (sus valores son genuinos)
+    tr = {k: transformar(excluir(s.reindex(idx), a.excluir) if k in a.variables else s.reindex(idx),
+                         k, a.transform) for k, s in datos.items()}
     ctrl = None
     if a.controles:
         if mac is None:
@@ -1163,8 +1203,13 @@ def cmd_correlacion(a):
                fuente=fuente_txt(meta, 'Series transformadas (%s). * = q < 0,10 tras corregir por '
                                        'comparaciones múltiples. "Nm" = la variable de la columna '
                                        'adelanta N meses.' % a.transform))
-    lista = []
-    for r in mejores.head(25).itertuples():
+    lista, contables = [], []
+    for r in mejores.itertuples():
+        if relacion_contable(r.y, r.x):
+            contables.append({'y': r.y, 'x': r.x, 'r': round(float(r.r), 3)})
+            continue
+        if len(lista) >= 25:
+            continue
         sig = 'robusta' if r.q < 0.05 else ('indicio' if r.q < 0.2 else 'no concluyente')
         lista.append({'y': r.y, 'x': r.x, 'r': r.r, 'rho_spearman': r.rho,
                       'rezago_meses': r.rezago_meses, 'n': r.n, 'n_efectivo': r.n_ef, 'p': r.p,
@@ -1177,9 +1222,12 @@ def cmd_correlacion(a):
     out = {'entidad': nombre(df, ent), 'modo': 'temporal', 'transformacion': a.transform,
            'controles': a.controles or [],
            'periodo': '%s a %s' % (idx[0], idx[-1]), 'pruebas': len(t), 'mejores': redondear(lista, 3),
+           'relaciones_contables': contables or None,
            'como_leer': 'r sobre variaciones (no niveles) para evitar correlaciones espurias por '
                         'tendencia/inflación; n_efectivo descuenta la autocorrelación; q corrige por '
-                        'haber probado muchos pares y rezagos. Correlación no es causalidad.',
+                        'haber probado muchos pares y rezagos. Correlación no es causalidad. '
+                        '"relaciones_contables": pares que se mueven juntos por construcción (por '
+                        'ejemplo mora y cobertura, ROE y ROA, un saldo y su cuota): no son hallazgos.',
            'grafico': os.path.abspath(png), 'detalle_csv': os.path.abspath(ruta)}
     avisos = []
     if len(idx) < 36:
@@ -1234,11 +1282,15 @@ def correlacion_transversal(a, df, meta):
                fuente=fuente_txt(meta, 'Promedio %s a %s, %d entidades. * = p < 0,05.' % (meses[0], fecha, len(x))))
     ruta = ruta_salida(a, 'correlacion_transversal.csv')
     pd.DataFrame(filas).to_csv(ruta, index=False)
+    contables = [{'a': f['a'], 'b': f['b'], 'rho_spearman': round(f['rho_spearman'], 3)}
+                 for f in filas if relacion_contable(f['a'], f['b'])]
+    filas = [f for f in filas if not relacion_contable(f['a'], f['b'])]
     cm.salida({'modo': 'transversal', 'periodo': '%s a %s' % (meses[0], fecha), 'entidades': len(x),
-               'pares': redondear(filas[:30], 3),
+               'pares': redondear(filas[:30], 3), 'relaciones_contables': contables or None,
                'como_leer': 'Spearman (por rangos) entre bancos: robusto a outliers de tamaño. Con ~%d '
                             'bancos, |rho| < 0,3 suele ser ruido. Describe asociaciones entre modelos '
-                            'de negocio, no causalidad.' % len(x),
+                            'de negocio, no causalidad. "relaciones_contables" se mueven juntos por '
+                            'construcción y no son hallazgos.' % len(x),
                'grafico': os.path.abspath(png), 'detalle_csv': os.path.abspath(ruta)})
 
 
@@ -1398,12 +1450,13 @@ def cmd_sensibilidad(a):
         s = a_mensual(s)
         if s.dropna().empty:
             continue
-        yt = transformar(s, a.y, a.transform)
+        # Las series del banco se excluyen antes de transformar; las macro no (sus valores son genuinos)
+        yt = transformar(excluir(s, a.excluir), a.y, a.transform)
         xs_ent = dict(xs)
         for x in (a.x_propias or []):
             sx = a_mensual(serie(df, cod, x.split(':')[0]))
-            xs_ent[x] = transformar(sx, x, a.transform).shift(a.rezago)
-        d = pd.concat([excluir(yt, a.excluir).rename('y')] + [xs_ent[x].rename(x) for x in xs_ent],
+            xs_ent[x] = transformar(excluir(sx, a.excluir), x, a.transform).shift(a.rezago)
+        d = pd.concat([yt.rename('y')] + [xs_ent[x].rename(x) for x in xs_ent],
                       axis=1).dropna()
         if a.desde:
             d = d[d.index >= a.desde]
@@ -1516,7 +1569,8 @@ def cmd_anomalias(a):
             nivel = nivel[nivel.index <= per]
             rec, prev = nivel.tail(6), nivel.iloc[-18:-6] if len(nivel) >= 12 else nivel.iloc[:0]
             p_q = float(stats.ttest_ind(rec, prev, equal_var=False)[1]) if len(prev) >= 4 and len(rec) >= 3 else np.nan
-            cambios[cod] = ult
+            if cod != 'AAA00':  # el sistema se evalúa contra su historia, no es un par más
+                cambios[cod] = ult
             filas.append({'codigo': cod, 'entidad': nombre(df, cod), 'campo': c, 'periodo': per,
                           'valor': float(s.loc[per]), 'cambio': float(ult),
                           'tipo_cambio': etiqueta_tr(c, a.transform) if not c.endswith('_ia') else 'crec. real 12m (%)',
@@ -1564,6 +1618,129 @@ def cmd_anomalias(a):
 
 
 # =========================================================== gráficos
+
+# =========================================================== novedades
+
+NOV_SISTEMA = {
+    'irr_tot': ('Mora total', 'alta'), 'irr_cons': ('Mora de consumo', 'alta'),
+    'irr_com': ('Mora comercial', 'alta'), 'roe': ('ROE del sistema', 'baja'),
+    'liq_amplia': ('Liquidez amplia', 'baja'), 'bPr_priv_ia': ('Crecimiento real de préstamos privados', None),
+    'bDe_priv_ia': ('Crecimiento real de depósitos privados', None),
+}
+
+
+def cmd_novedades(a):
+    """Lo más importante del mes, automático: récords, movimientos inusuales, bancos que más
+    empeoraron, cambios de cuota y, si riesgo-bancario está instalado, sus alertas de cartera."""
+    df = cargar(a.datos)
+    fecha = a.fecha or df.loc[df['tipo'] != 'grupo', 'periodo'].max()
+    hallazgos = []
+    # 1. Sistema: récords de la serie y movimientos fuera de lo habitual
+    for c, (etq, alerta) in NOV_SISTEMA.items():
+        if c not in df:
+            continue
+        s = a_mensual(serie(df, 'AAA00', c)).dropna()
+        s = s[s.index <= fecha]
+        if fecha not in s.index or len(s) < 13:
+            continue
+        v = float(s.loc[fecha])
+        if v >= s.max() or v <= s.min():
+            alto = v >= s.max()
+            hallazgos.append({'tipo': 'record', 'prioridad': 1 if alerta == ('alta' if alto else 'baja') else 2,
+                              'lectura': '%s: %s %%, la más %s de la serie disponible (desde %s).%s' % (
+                                  etq, gr.num(v, 2), 'alta' if alto else 'baja', s.index[0],
+                                  ' Es una señal de alerta.' if alerta == ('alta' if alto else 'baja') else ''),
+                              'datos': {'campo': c, 'valor': v, 'desde': s.index[0]}})
+        if not c.endswith('_ia'):
+            d = s.diff().dropna()
+            if len(d) >= 13:
+                hoy, hist = d.iloc[-1], d.iloc[-13:-1]
+                sd = hist.std()
+                if sd and sd > 0 and abs(hoy) >= 2 * sd and d.index[-1] == fecha:
+                    hallazgos.append({'tipo': 'movimiento_inusual', 'prioridad': 2,
+                                      'lectura': '%s %s %s puntos en el mes, %s veces lo habitual en los últimos 12 meses.' % (
+                                          etq, 'subió' if hoy > 0 else 'bajó', gr.num(abs(hoy), 2),
+                                          gr.num(abs(hoy) / sd, 1)),
+                                      'datos': {'campo': c, 'cambio': float(hoy), 'desvio_12m': float(sd)}})
+        else:
+            hallazgos.append({'tipo': 'crecimiento_real', 'prioridad': 3,
+                              'lectura': '%s: %s %% en 12 meses, descontada la inflación.' % (etq, gr.num(v, 1)),
+                              'datos': {'campo': c, 'valor': v}})
+    # 2. Entidades grandes: mora que más subió en 12 meses
+    f = df[(df['periodo'] == fecha) & (df['tipo'] != 'grupo') & (df['tipo'] != 'historica')]
+    sis_a = df.loc[(df['periodo'] == fecha) & (df['codigo'] == 'AAA00'), 'bA']
+    tot = float(sis_a.iloc[0]) if len(sis_a) else f['bA'].sum()
+    grandes = f[100 * f['bA'] / tot >= a.min_peso]['codigo'].tolist()
+    hace12 = cm.mes_anterior(fecha, 12)
+    if 'irr_tot' in df:
+        cambios = []
+        for c in grandes:
+            s = serie(df, c, 'irr_tot')
+            if fecha in s.index and hace12 in s.index and pd.notna(s[fecha]) and pd.notna(s[hace12]):
+                cambios.append((float(s[fecha] - s[hace12]), c, float(s[fecha])))
+        cambios.sort(reverse=True)
+        if cambios:
+            hallazgos.append({'tipo': 'mora_que_mas_subio', 'prioridad': 2,
+                              'lectura': 'Entre las entidades con más de %s %% del sistema, la mora que más subió en 12 '
+                                         'meses: %s.' % (gr.num(a.min_peso, 0), '; '.join(
+                                             '%s (%s puntos, hoy %s %%)' % (gr.corto(nombre(df, c), 30), gr.num(dd, 2),
+                                                                            gr.num(v, 2)) for dd, c, v in cambios[:a.top])),
+                              'datos': [{'codigo': c, 'entidad': nombre(df, c), 'cambio_pp': dd, 'mora': v}
+                                        for dd, c, v in cambios[:a.top]]})
+    # 3. Cuotas: quién ganó y perdió más en 12 meses, avisando si fue un escalón
+    for c, etq in (('cuota_bPr_priv', 'préstamos privados'), ('cuota_bDe_priv', 'depósitos privados')):
+        if c not in df:
+            continue
+        movs = []
+        for e in grandes:
+            s = a_mensual(serie(df, e, c))
+            s = s[(s.index >= hace12) & (s.index <= fecha)].dropna()
+            if len(s) < 6 or s.index[0] != hace12 or s.index[-1] != fecha:
+                continue
+            total = float(s.iloc[-1] - s.iloc[0])
+            paso = s.diff().abs()
+            escalon = paso.idxmax() if abs(total) >= 0.5 and paso.max() >= 0.5 * abs(total) else None
+            movs.append((total, e, escalon))
+        if movs:
+            movs.sort()
+            sel = movs[-a.top:][::-1] + movs[:a.top]
+            hallazgos.append({'tipo': 'cambio_de_cuota', 'prioridad': 3,
+                              'lectura': 'Cuota de %s en 12 meses: %s.' % (etq, '; '.join(
+                                  '%s %s%s puntos%s' % (gr.corto(nombre(df, e), 28), '+' if t > 0 else '', gr.num(t, 2),
+                                                        ' (casi todo en %s: fusión, venta de cartera o escalón; '
+                                                        'verificar antes de leerlo como tendencia)' % esc if esc else '') for t, e, esc in sel)),
+                              'datos': [{'codigo': e, 'entidad': nombre(df, e), 'cambio_pp': t, 'escalon_en': esc}
+                                        for t, e, esc in sel]})
+    # 4. Alertas de cartera de riesgo-bancario, si está instalado
+    r, _ = cm.ubicar_riesgo()
+    riesgo = None
+    if r:
+        import subprocess
+        p = subprocess.run([sys.executable, os.path.join(r['dir'], 'scripts', 'riesgo.py'), 'alertas', '--panel',
+                            os.path.abspath(a.datos), '--fecha', fecha, '--top', str(a.top)],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            riesgo = json.loads(p.stdout.decode('utf-8'))
+        except ValueError:
+            riesgo = {'error': p.stderr.decode('utf-8', 'replace')[-300:]}
+        if riesgo.get('alertas'):
+            hallazgos.append({'tipo': 'alertas_de_cartera', 'prioridad': 1,
+                              'lectura': 'riesgo-bancario encontró %d alertas de cartera (%s). La más relevante: %s' % (
+                                  riesgo['cantidad'], ', '.join('%s: %d' % kv for kv in riesgo['por_tipo'].items()),
+                                  riesgo['alertas'][0]['lectura']),
+                              'datos': riesgo['alertas'][:a.top]})
+    hallazgos.sort(key=lambda h: h['prioridad'])
+    cm.salida(redondear({
+        'fecha': fecha, 'hallazgos': hallazgos,
+        'riesgo_bancario': ('usado (%s)' % '.'.join(map(str, r['version']))) if r else
+        'no instalado: sin alertas de cartera (%s)' % cm.RIESGO_URL,
+        'error_riesgo': (riesgo or {}).get('error'),
+        'como_leer': 'Hallazgos automáticos, ordenados por prioridad (1 = mirar primero). Un récord se mide '
+                     'contra la historia que trae el panel. "Inusual" compara el cambio del mes con el desvío '
+                     'de los últimos 12. Un cambio de cuota concentrado en un mes suele ser una fusión o un '
+                     'escalón: verificarlo con "calidad" y "proforma" antes de leerlo como ganancia comercial. '
+                     'Son puntos de partida para preguntar, no conclusiones.'}, 3))
+
 
 def cmd_grafico(a):
     df = cargar(a.datos) if a.datos else None
@@ -1744,6 +1921,12 @@ def main():
     p.add_argument('--transform', default='auto', choices=['auto', 'ia', 'mensual'])
     p.add_argument('--top', type=int, default=15)
 
+    p = sub.add_parser('novedades')
+    comun(p)
+    p.add_argument('--fecha')
+    p.add_argument('--min-peso', type=float, default=1.0, help='%% del activo del sistema para "entidades grandes"')
+    p.add_argument('--top', type=int, default=3)
+
     p = sub.add_parser('grafico')
     p.add_argument('tipo', choices=['linea', 'dispersion', 'barras', 'macro'])
     p.add_argument('--datos')
@@ -1776,7 +1959,7 @@ def main():
     {'preparar': cmd_preparar, 'calidad': cmd_calidad, 'cuotas': cmd_cuotas, 'brechas': cmd_brechas,
      'correlacion': cmd_correlacion, 'segmentar': cmd_segmentar, 'sensibilidad': cmd_sensibilidad,
      'anomalias': cmd_anomalias, 'grafico': cmd_grafico, 'proforma': cmd_proforma,
-     'rentabilidad': cmd_rentabilidad}[a.cmd](a)
+     'rentabilidad': cmd_rentabilidad, 'novedades': cmd_novedades}[a.cmd](a)
 
 
 if __name__ == '__main__':
