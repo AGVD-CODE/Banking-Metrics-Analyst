@@ -2,6 +2,28 @@
 
 Cambios del skill `estratega-bancario`. Las versiones siguen [versionado semántico](https://semver.org/lang/es/) según su contrato ([`references/contrato.md`](skill/estratega-bancario/references/contrato.md)).
 
+## [1.3.0] — 2026-10-25
+
+Suma lo mejor de BCRA-Oraculo-Pro: un resumen automático del mes y un filtro de riesgo con el skill nuevo riesgo-bancario. Además corrige tres puntos débiles que encontró una revisión independiente.
+
+### Agregado
+
+- **`analizar.py novedades`:** lo más importante del mes, automático, como respuesta rápida sin el flujo completo. Incluye:
+  - récords de la serie del sistema;
+  - movimientos fuera de lo habitual;
+  - las entidades grandes cuya mora más subió;
+  - quién ganó y perdió más cuota, avisando si el cambio se concentró en un mes;
+  - crecimiento real de préstamos y depósitos;
+  - las alertas de cartera de riesgo-bancario, si está instalado.
+- **`scripts/filtro_riesgo.py`:** usa riesgo-bancario 1.x, opcional, para pasar las oportunidades por salud, estrés y alertas de cartera. Si falta, explica qué instalar y cómo seguir. Se usa en el paso 6 de `SKILL.md`.
+- **`correlacion`:** los pares que se mueven juntos por construcción contable (mora y cobertura, ROE y ROA, un saldo y su cuota) salen de la lista de hallazgos y se informan aparte, en `relaciones_contables`.
+
+### Corregido
+
+- **`--excluir` se aplica antes de transformar** en `correlacion` y `sensibilidad`. Antes, una variación de 12 meses que comparaba contra un mes excluido (por ejemplo, el alivio COVID) seguía entrando al análisis. Se aplica a las series bancarias y no a las macro.
+- **`anomalias`:** el total del sistema ya no se cuenta como un par más al calcular el z frente a los pares. Se sigue evaluando contra su propia historia.
+- **Mix de cartera y de depósitos:** un producto vacío (`---`) en un banco que sí informa su cartera total cuenta como 0 %. Antes, ese banco quedaba afuera de la mediana de pares y la inflaba. Por ejemplo, la mediana de prendarios de los 10 mayores bajaba de 4,2 % a 3,1 % y la de todos los bancos, de 1,7 % a 0,3 %.
+
 ## [1.2.0] — 2026-10-25
 
 El revisor independiente pasa a ser un skill aparte, **revisor-independiente**, que cualquier skill puede usar.
