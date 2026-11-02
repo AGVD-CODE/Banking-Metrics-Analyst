@@ -20,7 +20,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 
 
 # Versión de este skill (ver references/contrato.md).
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 # Versión de bcra-oraculo con la que este skill es compatible: misma mayor y al menos esta menor.
 ORACULO_REQUERIDO = (2, 1)
