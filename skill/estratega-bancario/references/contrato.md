@@ -2,7 +2,7 @@
 
 Qué necesita este skill, qué entrega y cómo se versiona. Sirve para construir otros skills encima (por ejemplo, uno que arme la presentación para el directorio) o debajo (otra fuente de datos), sin depender de su interior.
 
-Versión del skill: **1.3.0** (constante `VERSION` en `scripts/_comun.py`). Sigue versionado semántico: si cambia algo de lo que figura en este documento (nombres de comandos, columnas, claves del JSON), sube la versión mayor.
+Versión del skill: **1.3.1** (constante `VERSION` en `scripts/_comun.py`). Sigue versionado semántico: si cambia algo de lo que figura en este documento (nombres de comandos, columnas, claves del JSON), sube la versión mayor.
 
 ## Depende de
 

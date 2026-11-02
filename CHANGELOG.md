@@ -2,6 +2,12 @@
 
 Cambios del skill `estratega-bancario`. Las versiones siguen [versionado semántico](https://semver.org/lang/es/) según su contrato ([`references/contrato.md`](skill/estratega-bancario/references/contrato.md)).
 
+## [1.3.1] — 2026-11-02
+
+### Corregido
+
+- **No se podía instalar en Claude:** el campo `compatibility` de `SKILL.md` tenía 530 caracteres y Claude acepta hasta 500. Quedó más corto, con la misma información. El detalle de cada dependencia sigue en `references/contrato.md`.
+
 ## [1.3.0] — 2026-10-25
 
 Suma lo mejor de BCRA-Oraculo-Pro: un resumen automático del mes y un filtro de riesgo con el skill nuevo riesgo-bancario. Además corrige tres puntos débiles que encontró una revisión independiente.
